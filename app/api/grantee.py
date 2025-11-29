@@ -174,7 +174,7 @@ async def get_grant_detail(
         )
 
 
-@router.post("/grants/{grant_id}/spending_items", response_model=List[SpendingItemResponse], status_code=status.HTTP_201_CREATED)
+@router.post("/grants/{grant_id}/spending-items", response_model=List[SpendingItemResponse], status_code=status.HTTP_201_CREATED)
 async def create_spending_items(
     grant_id: int,
     items: List[SpendingItemCreate],
@@ -194,7 +194,7 @@ async def create_spending_items(
         )
 
 
-@router.post("/spending_requests", response_model=SpendingRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/spending-requests", response_model=SpendingRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_spending_request(
     request_data: SpendingRequestCreate,
     current_user: User = Depends(require_role(UserRole.GRANTEE)),
@@ -213,7 +213,7 @@ async def create_spending_request(
         )
 
 
-@router.post("/spending_items", response_model=SpendingItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/spending-items", response_model=SpendingItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_spending_item(
     data: SpendingItemCreate,
     current_user: User = Depends(require_role(UserRole.GRANTEE)),
@@ -241,7 +241,7 @@ async def create_spending_item(
         )
 
 
-@router.get("/grants/{grant_id}/spending_items", response_model=List[SpendingItemResponse])
+@router.get("/grants/{grant_id}/spending-items", response_model=List[SpendingItemResponse])
 async def get_spending_items(
     grant_id: int,
     current_user: User = Depends(require_role(UserRole.GRANTEE)),
@@ -304,7 +304,7 @@ async def get_spending_items(
         )
 
 
-@router.post("/spending_items/{spending_item_id}/receipt", response_model=SpendingItemReceiptResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/spending-items/{spending_item_id}/receipt", response_model=SpendingItemReceiptResponse, status_code=status.HTTP_201_CREATED)
 async def upload_receipt_for_spending_item(
     spending_item_id: int,
     file: UploadFile = File(...),
@@ -346,7 +346,7 @@ async def upload_receipt_for_spending_item(
         )
 
 
-@router.get("/spending_requests/{request_id}", response_model=SpendingRequestResponse)
+@router.get("/spending-requests/{request_id}", response_model=SpendingRequestResponse)
 async def get_spending_request(
     request_id: int,
     current_user: User = Depends(require_role(UserRole.GRANTEE)),
@@ -368,7 +368,7 @@ async def get_spending_request(
     return SpendingRequestResponse.model_validate(request)
 
 
-@router.get("/spending_requests", response_model=List[SpendingRequestResponse])
+@router.get("/spending-requests", response_model=List[SpendingRequestResponse])
 async def get_spending_requests(
     current_user: User = Depends(require_role(UserRole.GRANTEE)),
     db: AsyncSession = Depends(get_db)
@@ -385,7 +385,7 @@ async def get_spending_requests(
     return [SpendingRequestResponse.model_validate(r) for r in requests]
 
 
-@router.post("/spending_requests/{request_id}/upload_receipt", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/spending-requests/{request_id}/upload-receipt", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
 async def upload_receipt(
     request_id: int,
     file: UploadFile = File(...),

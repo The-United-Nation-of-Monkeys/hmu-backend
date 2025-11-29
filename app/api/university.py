@@ -182,7 +182,7 @@ async def get_grant_requests(
     return [SpendingRequestResponse.model_validate(r) for r in requests]
 
 
-@router.post("/requests/{request_id}/approve_top3", response_model=SpendingRequestResponse)
+@router.post("/requests/{request_id}/approve-top3", response_model=SpendingRequestResponse)
 async def approve_top3_request(
     request_id: int,
     approval_data: SpendingRequestApprove,

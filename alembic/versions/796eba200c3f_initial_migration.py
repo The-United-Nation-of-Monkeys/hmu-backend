@@ -25,13 +25,15 @@ def upgrade() -> None:
     op.execute("DO $$ BEGIN CREATE TYPE spendingrequeststatus AS ENUM ('pending_university_approval', 'pending_receipt', 'paid', 'rejected', 'blocked'); EXCEPTION WHEN duplicate_object THEN null; END $$;")
     
     # Create users table
+    # Используем postgresql.ENUM с checkfirst=True, чтобы не создавать тип заново
+    userrole_enum = postgresql.ENUM('government', 'university', 'grantee', name='userrole', create_type=False)
     op.create_table(
         'users',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('email', sa.String(), nullable=False),
         sa.Column('password_hash', sa.String(), nullable=False),
         sa.Column('name', sa.String(), nullable=False),
-        sa.Column('role', postgresql.ENUM('government', 'university', 'grantee', name='userrole'), nullable=False),
+        sa.Column('role', userrole_enum, nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
