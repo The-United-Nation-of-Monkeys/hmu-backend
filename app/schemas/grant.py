@@ -63,3 +63,9 @@ class GrantDetailForGranteeResponse(BaseModel):
             Decimal: str
         }
 
+
+class GrantDetailWithItemsResponse(GrantDetailResponse):
+    """Детальная схема гранта с spending items и requests"""
+    spending_items: List[dict]
+    spending_requests: List[dict]
+

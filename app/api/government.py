@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db
 from app.api.dependencies import require_role, get_current_user
-from app.schemas.grant import GrantCreate, GrantResponse
+from app.schemas.grant import GrantCreate, GrantResponse, GrantDetailWithItemsResponse
 from app.schemas.spending import SpendingItemResponse
 from app.services.grant_service import grant_service
 from app.services.spending_service import spending_service
@@ -26,20 +26,141 @@ async def get_all_grants(
     return [GrantResponse.model_validate(g) for g in grants]
 
 
-@router.get("/grants/{grant_id}", response_model=GrantResponse)
+@router.get("/grants/{grant_id}", response_model=GrantDetailWithItemsResponse)
 async def get_grant(
     grant_id: int,
     current_user: User = Depends(require_role(UserRole.GOVERNMENT)),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение гранта по ID"""
-    grant = await grant_service.get_grant(db, grant_id)
-    if not grant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Grant not found"
+    """Получение гранта по ID с spending items и requests"""
+    import logging
+    from decimal import Decimal
+    from app.models.spending_item import SpendingItem
+    from app.models.spending_request import SpendingRequest
+    from app.models.receipt import Receipt
+    from sqlalchemy import select
+    import os
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        grant = await grant_service.get_grant(db, grant_id)
+        if not grant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grant not found"
+            )
+        
+        # Вычисляем remaining_amount
+        remaining_amount = Decimal(str(grant.total_amount)) - Decimal(str(grant.amount_spent))
+        
+        # Получение всех SpendingItem для данного гранта
+        result = await db.execute(
+            select(SpendingItem)
+            .where(SpendingItem.grant_id == grant_id)
+            .order_by(SpendingItem.priority_index.asc())
         )
-    return GrantResponse.model_validate(grant)
+        items = result.scalars().all()
+        
+        # Получение всех SpendingRequest для данного гранта
+        result = await db.execute(
+            select(SpendingRequest)
+            .join(SpendingItem)
+            .where(SpendingItem.grant_id == grant_id)
+            .order_by(SpendingRequest.created_at.desc())
+        )
+        requests = result.scalars().all()
+        
+        # Получение чеков для spending items
+        item_ids = [item.id for item in items]
+        receipts_for_items = {}
+        if item_ids:
+            result = await db.execute(
+                select(Receipt)
+                .where(Receipt.spending_item_id.in_(item_ids))
+            )
+            receipts = result.scalars().all()
+            for receipt in receipts:
+                if receipt.spending_item_id:
+                    receipts_for_items[receipt.spending_item_id] = receipt
+        
+        # Получение чеков для spending requests
+        request_ids = [req.id for req in requests]
+        receipts_for_requests = {}
+        if request_ids:
+            result = await db.execute(
+                select(Receipt)
+                .where(Receipt.spending_request_id.in_(request_ids))
+            )
+            receipts = result.scalars().all()
+            for receipt in receipts:
+                if receipt.spending_request_id:
+                    receipts_for_requests[receipt.spending_request_id] = receipt
+        
+        # Формирование spending_items с чеками
+        spending_items_data = []
+        for item in items:
+            receipt = receipts_for_items.get(item.id)
+            receipt_url = None
+            if receipt:
+                filename = os.path.basename(receipt.file_path) if receipt.file_path else ""
+                receipt_url = f"/api/files/{filename}" if filename else None
+            
+            spending_items_data.append({
+                "id": item.id,
+                "grant_id": item.grant_id,
+                "title": item.title,
+                "description": None,
+                "amount": str(item.planned_amount),
+                "receipt_url": receipt_url,
+                "created_at": None
+            })
+        
+        # Формирование spending_requests с чеками
+        spending_requests_data = []
+        for req in requests:
+            receipt = receipts_for_requests.get(req.id)
+            receipt_url = None
+            if receipt:
+                filename = os.path.basename(receipt.file_path) if receipt.file_path else ""
+                receipt_url = f"/api/files/{filename}" if filename else None
+            
+            spending_requests_data.append({
+                "id": req.id,
+                "grant_id": grant_id,
+                "spending_item_id": req.spending_item_id,
+                "amount": str(req.amount),
+                "status": req.status,
+                "created_at": req.created_at.isoformat() if req.created_at else None,
+                "updated_at": req.updated_at.isoformat() if req.updated_at else None,
+                "receipt_url": receipt_url,
+                "aml_flags": req.aml_flags or []
+            })
+        
+        # Формирование ответа
+        response_data = {
+            "id": grant.id,
+            "title": grant.title,
+            "total_amount": grant.total_amount,
+            "amount_spent": grant.amount_spent,
+            "university_id": grant.university_id,
+            "grantee_id": grant.grantee_id,
+            "state": grant.state,
+            "created_at": grant.created_at,
+            "remaining_amount": remaining_amount,
+            "spending_items": spending_items_data,
+            "spending_requests": spending_requests_data
+        }
+        
+        return GrantDetailWithItemsResponse(**response_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting grant: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving grant: {str(e)}"
+        )
 
 
 @router.post("/grants", response_model=GrantResponse, status_code=status.HTTP_201_CREATED)
