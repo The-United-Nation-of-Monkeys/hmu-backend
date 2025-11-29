@@ -20,8 +20,10 @@ class SpendingItemResponse(BaseModel):
     id: int
     grant_id: int
     title: str
+    description: Optional[str] = None
     planned_amount: Decimal
     priority_index: int
+    created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

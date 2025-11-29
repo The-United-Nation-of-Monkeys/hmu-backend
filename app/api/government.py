@@ -1,12 +1,14 @@
 """
 Роутер для правительства
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db
 from app.api.dependencies import require_role, get_current_user
 from app.schemas.grant import GrantCreate, GrantResponse
+from app.schemas.spending import SpendingItemResponse
 from app.services.grant_service import grant_service
+from app.services.spending_service import spending_service
 from app.utils.enums import UserRole
 from app.models.user import User
 from typing import List
@@ -118,4 +120,82 @@ async def get_transactions(
         }
         for t in transactions
     ]
+
+
+@router.post("/grants/{grant_id}/spending-items/upload", status_code=status.HTTP_201_CREATED)
+async def upload_spending_items(
+    grant_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role(UserRole.GOVERNMENT)),
+    db: AsyncSession = Depends(get_db)
+):
+    """Загрузка Excel/CSV файла со статьями расходов"""
+    import logging
+    from pathlib import Path
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Проверка существования гранта
+        grant = await grant_service.get_grant(db, grant_id)
+        if not grant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grant not found"
+            )
+        
+        # Валидация формата файла
+        file_ext = Path(file.filename).suffix.lower()
+        allowed_extensions = {'.xlsx', '.xls', '.csv'}
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file format. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Чтение файла
+        file_content = await file.read()
+        
+        # Создание spending items из файла
+        created_items = await spending_service.create_spending_items_from_file(
+            db,
+            grant_id,
+            file_content,
+            file.filename
+        )
+        
+        # Формирование ответа
+        items_response = []
+        for item in created_items:
+            item_data = {
+                "id": item.id,
+                "grant_id": item.grant_id,
+                "title": item.title,
+                "description": None,  # Поле description пока не в модели
+                "planned_amount": item.planned_amount,
+                "priority_index": item.priority_index,
+                "created_at": None  # Поле created_at пока не в модели
+            }
+            items_response.append(SpendingItemResponse(**item_data))
+        
+        logger.info(f"Created {len(created_items)} spending items from file for grant {grant_id}")
+        
+        return {
+            "created": len(created_items),
+            "items": items_response
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error uploading spending items: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error uploading spending items: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing file: {str(e)}"
+        )
 

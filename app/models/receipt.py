@@ -12,7 +12,8 @@ class Receipt(Base):
     __tablename__ = "receipts"
     
     id = Column(Integer, primary_key=True, index=True)
-    spending_request_id = Column(Integer, ForeignKey("spending_requests.id"), nullable=False, unique=True, index=True)
+    spending_request_id = Column(Integer, ForeignKey("spending_requests.id"), nullable=True, unique=True, index=True)
+    spending_item_id = Column(Integer, ForeignKey("spending_items.id"), nullable=True, index=True)
     file_path = Column(String, nullable=False)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     verified = Column(Boolean, default=False, index=True)
@@ -21,6 +22,7 @@ class Receipt(Base):
     
     # Relationships
     spending_request = relationship("SpendingRequest", back_populates="receipt")
+    spending_item = relationship("SpendingItem", backref="receipts")
     uploader = relationship("User", foreign_keys=[uploaded_by])
     
     def __repr__(self):

@@ -51,6 +51,123 @@ class SpendingService:
         return created_items
     
     @staticmethod
+    async def create_spending_items_from_file(
+        db: AsyncSession,
+        grant_id: int,
+        file_content: bytes,
+        filename: str
+    ) -> list[SpendingItem]:
+        """Создание мета-пунктов расходов из Excel/CSV файла"""
+        import pandas as pd
+        import io
+        from pathlib import Path
+        
+        # Проверка существования гранта
+        result = await db.execute(select(Grant).where(Grant.id == grant_id))
+        grant = result.scalar_one_or_none()
+        if not grant:
+            raise ValueError("Grant not found")
+        
+        # Определение формата файла
+        file_ext = Path(filename).suffix.lower()
+        
+        try:
+            # Парсинг файла
+            if file_ext in ['.xlsx', '.xls']:
+                df = pd.read_excel(io.BytesIO(file_content))
+            elif file_ext == '.csv':
+                df = pd.read_csv(io.BytesIO(file_content))
+            else:
+                raise ValueError(f"Unsupported file format. Allowed: .xlsx, .xls, .csv")
+        except Exception as e:
+            raise ValueError(f"Error parsing file: {str(e)}")
+        
+        # Нормализация названий колонок (регистронезависимо)
+        df.columns = df.columns.str.strip()
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower()
+            if col_lower == 'title':
+                column_mapping[col] = 'title'
+            elif col_lower == 'amount':
+                column_mapping[col] = 'amount'
+            elif col_lower == 'description':
+                column_mapping[col] = 'description'
+        
+        # Переименование колонок
+        df = df.rename(columns=column_mapping)
+        
+        # Проверка наличия обязательных колонок (после нормализации)
+        required_columns = ['title', 'amount']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {', '.join([c.capitalize() for c in missing_columns])}")
+        
+        # Валидация и создание items
+        created_items = []
+        errors = []
+        
+        # Получаем текущий максимальный priority_index для гранта
+        result = await db.execute(
+            select(func.max(SpendingItem.priority_index))
+            .where(SpendingItem.grant_id == grant_id)
+        )
+        max_priority = result.scalar_one_or_none() or 0
+        
+        for idx, row in df.iterrows():
+            try:
+                # Валидация title
+                title = str(row.get('title', '')).strip()
+                if not title:
+                    errors.append(f"Row {idx + 2}: Title is required")
+                    continue
+                
+                # Валидация amount
+                amount = row.get('amount')
+                if pd.isna(amount):
+                    errors.append(f"Row {idx + 2}: Amount is required")
+                    continue
+                
+                try:
+                    amount_decimal = Decimal(str(amount))
+                    if amount_decimal <= 0:
+                        errors.append(f"Row {idx + 2}: Amount must be positive")
+                        continue
+                except (ValueError, TypeError):
+                    errors.append(f"Row {idx + 2}: Invalid amount format")
+                    continue
+                
+                # Создание item
+                item = SpendingItem(
+                    grant_id=grant_id,
+                    title=title,
+                    planned_amount=amount_decimal,
+                    priority_index=max_priority + idx + 1
+                )
+                db.add(item)
+                created_items.append(item)
+                
+            except Exception as e:
+                errors.append(f"Row {idx + 2}: {str(e)}")
+        
+        if errors and not created_items:
+            raise ValueError(f"File validation errors:\n" + "\n".join(errors))
+        
+        if created_items:
+            await db.commit()
+            for item in created_items:
+                await db.refresh(item)
+        
+        if errors:
+            # Если есть частично созданные items, все равно возвращаем их
+            # но предупреждаем об ошибках
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Some rows had errors: {errors}")
+        
+        return created_items
+    
+    @staticmethod
     async def create_spending_request(
         db: AsyncSession,
         request_data: SpendingRequestCreate,

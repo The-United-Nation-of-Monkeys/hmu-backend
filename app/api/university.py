@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db
 from app.api.dependencies import require_role, get_current_user
-from app.schemas.grant import GrantResponse, GrantDetailResponse
+from app.schemas.grant import GrantResponse, GrantDetailResponse, GrantAssignRequest
 from app.schemas.spending import SpendingRequestResponse, SpendingRequestApprove
 from app.schemas.contract import SmartContractLogResponse
 from app.services.grant_service import grant_service
@@ -17,6 +17,26 @@ from sqlalchemy import select
 from typing import List
 
 router = APIRouter(prefix="/university", tags=["University"])
+
+
+@router.get("/grantees", response_model=List[dict])
+async def get_grantees(
+    current_user: User = Depends(require_role(UserRole.UNIVERSITY)),
+    db: AsyncSession = Depends(get_db)
+):
+    """Получение списка грантополучателей"""
+    result = await db.execute(
+        select(User).where(User.role == UserRole.GRANTEE).order_by(User.name)
+    )
+    grantees = result.scalars().all()
+    return [
+        {
+            "id": g.id,
+            "name": g.name,
+            "email": g.email
+        }
+        for g in grantees
+    ]
 
 
 @router.get("/grants", response_model=List[GrantResponse])
@@ -59,6 +79,7 @@ async def get_grant(
             "total_amount": grant.total_amount,
             "amount_spent": grant.amount_spent,
             "university_id": grant.university_id,
+            "grantee_id": grant.grantee_id,
             "state": grant.state,
             "created_at": grant.created_at,
             "remaining_amount": remaining_amount
@@ -72,6 +93,69 @@ async def get_grant(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving grant: {str(e)}"
+        )
+
+
+@router.put("/grants/{grant_id}/assign", response_model=GrantResponse)
+async def assign_grantee(
+    grant_id: int,
+    grantee_data: GrantAssignRequest,
+    current_user: User = Depends(require_role(UserRole.UNIVERSITY)),
+    db: AsyncSession = Depends(get_db)
+):
+    """Назначение грантополучателя на грант"""
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        grantee_id = grantee_data.grantee_id
+        
+        # Проверка существования гранта и прав доступа
+        grant = await grant_service.get_grant(db, grant_id)
+        if not grant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grant not found"
+            )
+        
+        if grant.university_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Grant does not belong to your university"
+            )
+        
+        # Проверка существования грантополучателя
+        result = await db.execute(select(User).where(User.id == grantee_id))
+        grantee = result.scalar_one_or_none()
+        if not grantee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grantee not found"
+            )
+        
+        if grantee.role != UserRole.GRANTEE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not a grantee"
+            )
+        
+        # Обновление grantee_id
+        grant.grantee_id = grantee_id
+        await db.commit()
+        await db.refresh(grant)
+        
+        logger.info(f"Grant {grant_id} assigned to grantee {grantee_id} by university {current_user.id}")
+        
+        return GrantResponse.model_validate(grant)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning grantee: {e}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error assigning grantee: {str(e)}"
         )
 
 

@@ -91,15 +91,10 @@ class GrantService:
         db: AsyncSession,
         grantee_id: int
     ) -> list[Grant]:
-        """Получение грантов грантополучателя (через spending_items)"""
-        from app.models.spending_item import SpendingItem
-        from app.models.spending_request import SpendingRequest
-        
-        # Получаем все гранты, где есть spending_items с запросами от этого grantee
+        """Получение грантов грантополучателя (по grantee_id)"""
+        # Получаем все гранты, назначенные на этого grantee
         result = await db.execute(
-            select(Grant).join(SpendingItem).join(SpendingRequest).where(
-                SpendingRequest.grantee_id == grantee_id
-            ).distinct()
+            select(Grant).where(Grant.grantee_id == grantee_id)
         )
         return list(result.scalars().all())
     
