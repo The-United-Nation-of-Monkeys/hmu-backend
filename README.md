@@ -1,238 +1,216 @@
-# Инструмент для управления грантовыми средствами через смарт-контракты
+# SmartGrant Backend API
 
-Программный инструмент на Python для создания и управления смарт-контрактами для эффективного управления грантовыми средствами на блокчейне Ethereum.
+Backend платформы SmartGrant для управления грантовыми средствами с интеграцией МИР, AML-проверками и блокчейном.
 
-## Возможности
+## Технологии
 
-- ✅ Компиляция Solidity контрактов
-- ✅ Развертывание контрактов в сеть Ethereum
-- ✅ Создание и управление грантами
-- ✅ Система одобрения грантов (мультиподпись)
-- ✅ Выделение и выпуск средств
-- ✅ Отслеживание статусов грантов
-- ✅ CLI интерфейс для удобной работы
+- **Python 3.11+**
+- **FastAPI** - современный веб-фреймворк
+- **SQLAlchemy 2.0** - ORM
+- **PostgreSQL** - база данных
+- **Web3.py** - работа с блокчейном
+- **Pydantic** - валидация данных
 
 ## Структура проекта
 
 ```
 backend/
-├── contracts/
-│   ├── GrantManager.sol          # Смарт-контракт для управления грантами
-│   └── compiled/                  # Скомпилированные контракты
-├── src/
-│   ├── __init__.py
-│   ├── compiler.py                # Модуль компиляции контрактов
-│   ├── deployer.py                # Модуль развертывания контрактов
-│   └── grant_manager.py           # Клиент для работы с грантами
-├── cli.py                         # CLI интерфейс
-├── requirements.txt               # Зависимости Python
-├── .gitignore
+├── app/
+│   ├── main.py              # Точка входа FastAPI
+│   ├── config.py            # Конфигурация
+│   ├── db.py                # Настройка БД
+│   ├── models/              # SQLAlchemy модели
+│   │   ├── user.py
+│   │   ├── grant.py
+│   │   ├── transaction.py
+│   │   └── expense.py
+│   ├── schemas/             # Pydantic схемы
+│   │   ├── grant.py
+│   │   ├── transaction.py
+│   │   ├── expense.py
+│   │   └── aml.py
+│   ├── routers/             # API роутеры
+│   │   ├── mir.py           # Webhook от МИР
+│   │   ├── expenses.py       # Управление расходами
+│   │   ├── grants.py         # Управление грантами
+│   │   └── aml.py           # AML проверки
+│   └── services/            # Бизнес-логика
+│       ├── blockchain.py    # Работа с блокчейном
+│       ├── aml_engine.py     # AML движок
+│       ├── expense_service.py
+│       └── report_service.py
+├── requirements.txt
 └── README.md
 ```
 
 ## Установка
 
-1. Клонируйте репозиторий или скопируйте файлы проекта
+### Вариант 1: Docker Compose (рекомендуется)
 
-2. Установите зависимости:
+1. **Скопируйте пример конфигурации:**
+```bash
+cp env.example .env
+```
+
+2. **Отредактируйте `.env` файл** (при необходимости)
+
+3. **Запустите через Docker Compose:**
+```bash
+docker-compose up -d
+```
+
+Приложение будет доступно по адресу: http://localhost:8000
+
+### Вариант 2: Локальная установка
+
+1. **Установите зависимости:**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Установите Solidity компилятор:
-
-**Важно:** Автоматическая установка через `py-solc-x` может зависать. Рекомендуется установить solc вручную:
-
-**macOS:**
+2. **Настройте переменные окружения:**
 ```bash
-brew install solidity
+cp env.example .env
+# Отредактируйте .env файл
 ```
 
-**Linux (Ubuntu/Debian):**
+3. **Создайте базу данных PostgreSQL:**
 ```bash
-sudo apt-get update
-sudo apt-get install solc
+createdb smartgrant
 ```
 
-**Альтернатива - установка через Python (может зависнуть):**
+4. **Запустите приложение:**
 ```bash
-# В отдельном терминале или фоновом режиме:
-python install_solc.py
-# Или:
-python -c "from solcx import install_solc; install_solc('0.8.19')"
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Если установка зависает:**
-- Прервите процесс (Ctrl+C)
-- Установите solc системно (см. выше)
-- Используйте флаг `--skip-install` при компиляции:
-  ```bash
-  python cli.py compile --skip-install
-  ```
+Приложение будет доступно по адресу: http://localhost:8000
 
-4. Создайте файл `.env` с настройками:
-```env
-RPC_URL=http://localhost:8545
-# Или для тестовой сети:
-# RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+**Документация API:** http://localhost:8000/docs
 
-PRIVATE_KEY=your_private_key_here
-DEPLOYER_ADDRESS=your_deployer_address_here
+## API Endpoints
 
-GAS_LIMIT=3000000
-GAS_PRICE=20000000000
-```
+### МИР Webhook
 
-## Использование
+**POST** `/api/v1/mir/webhook`
+- Принимает транзакции от МИР
+- Автоматически создаёт расходы
+- Запускает AML проверку
+- Логирует в блокчейн
 
-### Компиляция контрактов
+### Гранты
+
+- **POST** `/api/v1/grants` - Создание гранта
+- **GET** `/api/v1/grants` - Список грантов
+- **GET** `/api/v1/grants/{id}` - Получение гранта
+- **GET** `/api/v1/grants/{id}/report` - Отчёт по гранту
+
+### Расходы
+
+- **POST** `/api/v1/expenses/manual` - Ручное создание расхода
+- **GET** `/api/v1/expenses` - Список расходов
+- **GET** `/api/v1/expenses/{id}` - Получение расхода
+- **PATCH** `/api/v1/expenses/{id}` - Обновление расхода
+
+### AML
+
+- **POST** `/api/v1/aml/check` - Ручная AML проверка
+
+## AML Правила
+
+Движок проверяет следующие нарушения:
+
+1. **large_amount** - Сумма > 20% от гранта
+2. **no_receipt** - Отсутствует чек
+3. **suspicious_merchant** - Название продавца похоже на ФИО
+4. **affiliated_person** - Продавец аффилирован с получателем
+5. **duplicated_transactions** - Дублирующиеся транзакции
+
+## Примеры использования
+
+### Создание гранта
 
 ```bash
-python cli.py compile
-# Или для конкретного контракта:
-python cli.py compile --contract GrantManager
-# Или все контракты:
-python cli.py compile --all
-# Пропустить автоматическую установку solc (если установлен системно):
-python cli.py compile --skip-install
+curl -X POST "http://localhost:8000/api/v1/grants" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Исследовательский грант",
+    "amount_total": 1000000,
+    "grantee_id": 1,
+    "blockchain_address": "0x123..."
+  }'
 ```
 
-### Развертывание контракта
+### Webhook от МИР
 
 ```bash
-python cli.py deploy --min-approvals 2
+curl -X POST "http://localhost:8000/api/v1/mir/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_id": "MIR-12345",
+    "amount": 5000,
+    "mcc": "5732",
+    "merchant": "ООО УНИКАЛЬНЫЕ ДЕТАЛИ",
+    "receipt": {"items": [...]}
+  }'
 ```
 
-Адрес развернутого контракта будет сохранен в `contract_config.json`.
+### Получение отчёта по гранту
 
-### Управление грантами
-
-#### Пополнение контракта средствами
 ```bash
-python cli.py deposit --amount 10.0
+curl "http://localhost:8000/api/v1/grants/1/report"
 ```
 
-#### Создание гранта
+## Разработка
+
+### Запуск в режиме разработки
+
+**С Docker:**
 ```bash
-python cli.py create-grant \
-  --recipient 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb \
-  --amount 5.0 \
-  --description "Research grant for blockchain project" \
-  --days 90
+docker-compose up
 ```
 
-#### Одобрение гранта
+**Локально:**
 ```bash
-python cli.py approve --grant-id 1
+uvicorn app.main:app --reload
 ```
 
-#### Выделение средств
+### Миграции БД
+
+Используйте Alembic для миграций:
+
 ```bash
-python cli.py allocate --grant-id 1 --amount 5.0
+# Инициализация (если еще не инициализирован)
+alembic init alembic
+
+# Создание миграции
+alembic revision --autogenerate -m "Initial migration"
+
+# Применение миграций
+alembic upgrade head
 ```
 
-#### Выпуск средств получателю
-```bash
-python cli.py release --grant-id 1 --amount 2.5
-```
+**Примечание:** Для прототипа таблицы создаются автоматически через `Base.metadata.create_all()` в `app/main.py`
 
-#### Просмотр информации о гранте
-```bash
-python cli.py info --grant-id 1
-```
+## Особенности
 
-#### Список всех грантов
-```bash
-python cli.py list --limit 10
-```
+- ✅ Автоматическая обработка транзакций от МИР
+- ✅ AML проверки в реальном времени
+- ✅ Интеграция с блокчейном для прозрачности
+- ✅ Детальная отчётность по грантам
+- ✅ Ручная загрузка расходов с файлами
+- ✅ RESTful API с автодокументацией
 
-#### Просмотр баланса контракта
-```bash
-python cli.py balance
-```
+## TODO для продакшена
 
-## Использование в Python коде
-
-```python
-from src.grant_manager import GrantManagerClient
-from src.deployer import ContractDeployer
-
-# Развертывание контракта
-deployer = ContractDeployer()
-result = deployer.deploy_grant_manager(min_approvals=2)
-contract_address = result['address']
-
-# Работа с грантами
-client = GrantManagerClient(contract_address)
-
-# Создание гранта
-from datetime import datetime, timedelta
-deadline = int((datetime.now() + timedelta(days=90)).timestamp())
-result = client.create_grant(
-    recipient="0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-    amount=5.0,
-    description="Research grant",
-    deadline=deadline,
-    requires_approval=True
-)
-
-# Получение информации о гранте
-grant = client.get_grant(grant_id=1)
-print(f"Grant status: {grant['status']}")
-print(f"Amount: {grant['amount']} ETH")
-```
-
-## Функционал смарт-контракта
-
-### Основные функции:
-
-1. **Создание гранта** - создание нового гранта с указанием получателя, суммы и описания
-2. **Одобрение гранта** - система мультиподписи для одобрения грантов
-3. **Выделение средств** - выделение средств из баланса контракта для гранта
-4. **Выпуск средств** - перевод средств получателю гранта
-5. **Отмена гранта** - отмена гранта до начала выделения средств
-
-### Статусы грантов:
-
-- `Pending` - ожидает одобрения
-- `Approved` - одобрен
-- `Active` - активен (средства выделены)
-- `Completed` - завершен (все средства выпущены)
-- `Cancelled` - отменен
-
-### Безопасность:
-
-- Только владелец может создавать гранты и управлять средствами
-- Система мультиподписи для одобрения грантов
-- Контроль выделенных и выпущенных средств
-- Защита от перерасхода средств
-
-## Тестирование
-
-Для тестирования рекомендуется использовать локальную сеть (Ganache) или тестовую сеть (Sepolia, Goerli).
-
-### Использование Ganache:
-
-1. Установите Ganache: https://trufflesuite.com/ganache/
-2. Запустите локальную сеть
-3. Обновите `RPC_URL` в `.env` на `http://localhost:8545`
-4. Используйте приватные ключи из Ganache
-
-## Требования
-
-- Python 3.8+
-- Node.js (для Solidity компилятора)
-- Доступ к Ethereum RPC узлу (локальный или через Infura/Alchemy)
+- [ ] Аутентификация и авторизация (JWT)
+- [ ] Обработка файлов (сохранение, OCR)
+- [ ] Интеграция с реальным смарт-контрактом
+- [ ] Логирование и мониторинг
+- [ ] Тесты
+- [ ] Docker контейнеризация
+- [ ] CI/CD
 
 ## Лицензия
 
 MIT
-
-## Поддержка
-
-При возникновении проблем проверьте:
-- Правильность настроек в `.env`
-- Доступность RPC узла
-- Достаточность баланса для транзакций
-- Правильность адресов получателей
-

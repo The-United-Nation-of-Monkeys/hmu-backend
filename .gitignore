@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,12 +19,38 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.env
+
+# Virtual Environment
 venv/
 ENV/
 env/
 .venv
-*.solc
-contracts/compiled/
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Database
+*.db
+*.sqlite
+
+# Logs
 *.log
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Contracts (old)
+contracts/compiled/
+*.solc
