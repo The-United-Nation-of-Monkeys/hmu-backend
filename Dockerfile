@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копирование приложения
 COPY . .
 
+# Создание директории для загрузок
+RUN mkdir -p /app/uploads
+
 # Переменные окружения
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -27,3 +30,4 @@ EXPOSE 8000
 
 # Команда запуска
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

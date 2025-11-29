@@ -1,15 +1,16 @@
 # SmartGrant Backend API
 
-Backend платформы SmartGrant для управления грантовыми средствами с интеграцией МИР, AML-проверками и блокчейном.
+Backend платформы SmartGrant для управления грантовыми средствами с интеграцией смарт-контрактов, AML-проверками и JWT авторизацией.
 
 ## Технологии
 
 - **Python 3.11+**
-- **FastAPI** - современный веб-фреймворк
-- **SQLAlchemy 2.0** - ORM
+- **FastAPI** - async веб-фреймворк
+- **SQLAlchemy 2.0** - async ORM
+- **Alembic** - миграции БД
 - **PostgreSQL** - база данных
-- **Web3.py** - работа с блокчейном
-- **Pydantic** - валидация данных
+- **JWT** - авторизация
+- **Web3.py** - работа с блокчейном (mock adapter)
 
 ## Структура проекта
 
@@ -17,46 +18,44 @@ Backend платформы SmartGrant для управления грантов
 backend/
 ├── app/
 │   ├── main.py              # Точка входа FastAPI
-│   ├── config.py            # Конфигурация
-│   ├── db.py                # Настройка БД
+│   ├── core/                # Конфигурация и безопасность
+│   │   ├── config.py
+│   │   └── security.py
+│   ├── db/                  # Настройка БД
+│   │   └── base.py
 │   ├── models/              # SQLAlchemy модели
-│   │   ├── user.py
-│   │   ├── grant.py
-│   │   ├── transaction.py
-│   │   └── expense.py
 │   ├── schemas/             # Pydantic схемы
-│   │   ├── grant.py
-│   │   ├── transaction.py
-│   │   ├── expense.py
-│   │   └── aml.py
-│   ├── routers/             # API роутеры
-│   │   ├── mir.py           # Webhook от МИР
-│   │   ├── expenses.py       # Управление расходами
-│   │   ├── grants.py         # Управление грантами
-│   │   └── aml.py           # AML проверки
-│   └── services/            # Бизнес-логика
-│       ├── blockchain.py    # Работа с блокчейном
-│       ├── aml_engine.py     # AML движок
-│       ├── expense_service.py
-│       └── report_service.py
+│   ├── services/            # Бизнес-логика
+│   ├── api/                 # API роутеры
+│   │   ├── auth.py
+│   │   ├── government.py
+│   │   ├── university.py
+│   │   └── grantee.py
+│   └── utils/               # Утилиты
+├── alembic/                 # Миграции
+├── Dockerfile
+├── docker-compose.yaml
 ├── requirements.txt
 └── README.md
 ```
 
-## Установка
+## Быстрый старт
 
 ### Вариант 1: Docker Compose (рекомендуется)
 
-1. **Скопируйте пример конфигурации:**
+1. **Скопируйте конфигурацию:**
 ```bash
-cp env.example .env
+cp .env.example .env
 ```
 
-2. **Отредактируйте `.env` файл** (при необходимости)
-
-3. **Запустите через Docker Compose:**
+2. **Запустите через Docker Compose:**
 ```bash
 docker-compose up -d
+```
+
+3. **Примените миграции:**
+```bash
+docker-compose exec app alembic upgrade head
 ```
 
 Приложение будет доступно по адресу: http://localhost:8000
@@ -70,147 +69,243 @@ pip install -r requirements.txt
 
 2. **Настройте переменные окружения:**
 ```bash
-cp env.example .env
-# Отредактируйте .env файл
+cp .env.example .env
+# Отредактируйте .env
 ```
 
-3. **Создайте базу данных PostgreSQL:**
+3. **Запустите PostgreSQL:**
 ```bash
+# Убедитесь, что PostgreSQL запущен
 createdb smartgrant
 ```
 
-4. **Запустите приложение:**
+4. **Примените миграции:**
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+alembic upgrade head
 ```
 
-Приложение будет доступно по адресу: http://localhost:8000
-
-**Документация API:** http://localhost:8000/docs
-
-## API Endpoints
-
-### МИР Webhook
-
-**POST** `/api/v1/mir/webhook`
-- Принимает транзакции от МИР
-- Автоматически создаёт расходы
-- Запускает AML проверку
-- Логирует в блокчейн
-
-### Гранты
-
-- **POST** `/api/v1/grants` - Создание гранта
-- **GET** `/api/v1/grants` - Список грантов
-- **GET** `/api/v1/grants/{id}` - Получение гранта
-- **GET** `/api/v1/grants/{id}/report` - Отчёт по гранту
-
-### Расходы
-
-- **POST** `/api/v1/expenses/manual` - Ручное создание расхода
-- **GET** `/api/v1/expenses` - Список расходов
-- **GET** `/api/v1/expenses/{id}` - Получение расхода
-- **PATCH** `/api/v1/expenses/{id}` - Обновление расхода
-
-### AML
-
-- **POST** `/api/v1/aml/check` - Ручная AML проверка
-
-## AML Правила
-
-Движок проверяет следующие нарушения:
-
-1. **large_amount** - Сумма > 20% от гранта
-2. **no_receipt** - Отсутствует чек
-3. **suspicious_merchant** - Название продавца похоже на ФИО
-4. **affiliated_person** - Продавец аффилирован с получателем
-5. **duplicated_transactions** - Дублирующиеся транзакции
-
-## Примеры использования
-
-### Создание гранта
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/grants" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Исследовательский грант",
-    "amount_total": 1000000,
-    "grantee_id": 1,
-    "blockchain_address": "0x123..."
-  }'
-```
-
-### Webhook от МИР
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/mir/webhook" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transaction_id": "MIR-12345",
-    "amount": 5000,
-    "mcc": "5732",
-    "merchant": "ООО УНИКАЛЬНЫЕ ДЕТАЛИ",
-    "receipt": {"items": [...]}
-  }'
-```
-
-### Получение отчёта по гранту
-
-```bash
-curl "http://localhost:8000/api/v1/grants/1/report"
-```
-
-## Разработка
-
-### Запуск в режиме разработки
-
-**С Docker:**
-```bash
-docker-compose up
-```
-
-**Локально:**
+5. **Запустите приложение:**
 ```bash
 uvicorn app.main:app --reload
 ```
 
-### Миграции БД
+## API Endpoints
 
-Используйте Alembic для миграций:
+### Аутентификация
+
+- **POST** `/api/auth/signup` - Регистрация
+- **POST** `/api/auth/login` - Вход (получение JWT)
+
+### Government (Правительство)
+
+- **POST** `/api/government/grants` - Создание гранта
+
+### University (Университет)
+
+- **GET** `/api/university/grants/{id}` - Получение гранта
+- **GET** `/api/university/grants/{id}/requests` - Запросы по гранту
+- **POST** `/api/university/requests/{id}/approve_top3` - Одобрение топ-3
+- **GET** `/api/university/logs` - Логи операций
+
+### Grantee (Грантополучатель)
+
+- **GET** `/api/grantee/grants` - Список грантов
+- **POST** `/api/grantee/grants/{id}/spending_items` - Создание мета-пунктов
+- **POST** `/api/grantee/spending_requests` - Создание запроса на транш
+- **POST** `/api/grantee/spending_requests/{id}/upload_receipt` - Загрузка чека
+
+## Примеры запросов
+
+### 1. Регистрация пользователя
 
 ```bash
-# Инициализация (если еще не инициализирован)
-alembic init alembic
+curl -X POST "http://localhost:8000/api/auth/signup" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "government@example.com",
+    "password": "password123",
+    "name": "Government User",
+    "role": "government"
+  }'
+```
 
-# Создание миграции
-alembic revision --autogenerate -m "Initial migration"
+### 2. Вход и получение JWT
 
-# Применение миграций
+```bash
+curl -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "government@example.com",
+    "password": "password123"
+  }'
+```
+
+Ответ:
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer"
+}
+```
+
+### 3. Создание гранта (Government)
+
+```bash
+curl -X POST "http://localhost:8000/api/government/grants" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "title": "Research Grant 2024",
+    "total_amount": 1000000,
+    "university_id": 2
+  }'
+```
+
+### 4. Создание мета-пунктов (Grantee)
+
+```bash
+curl -X POST "http://localhost:8000/api/grantee/grants/1/spending_items" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '[
+    {
+      "title": "Equipment",
+      "planned_amount": 500000,
+      "priority_index": 1
+    },
+    {
+      "title": "Personnel",
+      "planned_amount": 300000,
+      "priority_index": 2
+    },
+    {
+      "title": "Materials",
+      "planned_amount": 200000,
+      "priority_index": 3
+    }
+  ]'
+```
+
+### 5. Создание запроса на транш (Grantee)
+
+```bash
+curl -X POST "http://localhost:8000/api/grantee/spending_requests" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "spending_item_id": 1,
+    "amount": 100000
+  }'
+```
+
+### 6. Одобрение запроса (University)
+
+```bash
+curl -X POST "http://localhost:8000/api/university/requests/1/approve_top3" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "approved": true
+  }'
+```
+
+### 7. Загрузка чека (Grantee)
+
+```bash
+curl -X POST "http://localhost:8000/api/grantee/spending_requests/1/upload_receipt" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@receipt.pdf"
+```
+
+## Бизнес-правила
+
+1. **Чек обязателен**: Нельзя запросить новый транш, пока не загружен и не верифицирован чек предыдущего
+2. **Топ-3 требуют одобрения**: Топ-3 самых больших мета-пункта требуют ручного подтверждения университета
+3. **AML проверки**: Автоматическая проверка на large_amount, duplicated_transactions, budget_exceeded
+4. **Защита от double-spend**: Проверка превышения бюджета и дубликатов
+5. **Логирование**: Все операции логируются в смарт-контракт (mock)
+
+## Статусы запросов
+
+- `pending_university_approval` - Ожидает одобрения университета (топ-3)
+- `pending_receipt` - Ожидает загрузки чека
+- `paid` - Оплачен
+- `rejected` - Отклонён
+- `blocked` - Заблокирован (AML флаги)
+
+## Миграции
+
+### Создание новой миграции
+
+```bash
+alembic revision --autogenerate -m "Description"
+```
+
+### Применение миграций
+
+```bash
 alembic upgrade head
 ```
 
-**Примечание:** Для прототипа таблицы создаются автоматически через `Base.metadata.create_all()` в `app/main.py`
+### Откат миграции
+
+```bash
+alembic downgrade -1
+```
+
+## Документация API
+
+После запуска документация доступна по адресу:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+## Тестирование
+
+### Создание тестовых пользователей
+
+1. Government user:
+```bash
+curl -X POST "http://localhost:8000/api/auth/signup" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "gov@test.com", "password": "test123", "name": "Gov User", "role": "government"}'
+```
+
+2. University user:
+```bash
+curl -X POST "http://localhost:8000/api/auth/signup" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "uni@test.com", "password": "test123", "name": "Uni User", "role": "university"}'
+```
+
+3. Grantee user:
+```bash
+curl -X POST "http://localhost:8000/api/auth/signup" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "grantee@test.com", "password": "test123", "name": "Grantee User", "role": "grantee"}'
+```
 
 ## Особенности
 
-- ✅ Автоматическая обработка транзакций от МИР
-- ✅ AML проверки в реальном времени
-- ✅ Интеграция с блокчейном для прозрачности
-- ✅ Детальная отчётность по грантам
-- ✅ Ручная загрузка расходов с файлами
-- ✅ RESTful API с автодокументацией
+- ✅ Async/await везде
+- ✅ JWT авторизация
+- ✅ Ролевая модель доступа
+- ✅ AML проверки
+- ✅ Интеграция со смарт-контрактом (mock)
+- ✅ Защита от double-spend
+- ✅ Валидация бизнес-правил
+- ✅ Логирование всех операций
 
 ## TODO для продакшена
 
-- [ ] Аутентификация и авторизация (JWT)
-- [ ] Обработка файлов (сохранение, OCR)
-- [ ] Интеграция с реальным смарт-контрактом
-- [ ] Логирование и мониторинг
+- [ ] Реальная интеграция с Web3
+- [ ] Обработка файлов (OCR для чеков)
+- [ ] Уведомления
 - [ ] Тесты
-- [ ] Docker контейнеризация
-- [ ] CI/CD
+- [ ] Мониторинг и логирование
+- [ ] Rate limiting
+- [ ] Валидация файлов
 
 ## Лицензия
 
 MIT
+

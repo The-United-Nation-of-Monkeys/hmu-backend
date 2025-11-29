@@ -1,30 +1,28 @@
 """
-Модель транзакции от МИР
+Модель транзакции
 """
-from sqlalchemy import Column, Integer, String, Numeric, Boolean, DateTime, JSON, Index
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.db import Base
+from app.db.base import Base
 
 
 class Transaction(Base):
-    """Модель транзакции от МИР"""
+    """Модель транзакции"""
     __tablename__ = "transactions"
     
     id = Column(Integer, primary_key=True, index=True)
-    mir_id = Column(String, unique=True, nullable=False, index=True)  # ID транзакции от МИР
-    amount = Column(Numeric(18, 2), nullable=False, index=True)
-    mcc_code = Column(String, nullable=True, index=True)  # Merchant Category Code
-    merchant_name = Column(String, nullable=True, index=True)
-    has_receipt = Column(Boolean, default=False, index=True)
-    raw_receipt_json = Column(JSON, nullable=True)  # Сырые данные чека
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    spending_request_id = Column(Integer, ForeignKey("spending_requests.id"), nullable=True, index=True)
+    source = Column(String, nullable=False)
+    destination = Column(String, nullable=False)
+    amount = Column(Numeric(18, 2), nullable=False)
+    currency = Column(String, default="RUB")
+    external_id = Column(String, nullable=True, index=True)  # MIR transaction ID
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    # Индекс для поиска дубликатов
-    __table_args__ = (
-        Index('idx_mir_id', 'mir_id'),
-        Index('idx_created_at', 'created_at'),
-    )
+    # Relationships
+    spending_request = relationship("SpendingRequest", back_populates="transaction")
     
     def __repr__(self):
-        return f"<Transaction(id={self.id}, mir_id='{self.mir_id}', amount={self.amount})>"
+        return f"<Transaction(id={self.id}, amount={self.amount}, external_id='{self.external_id}')>"
 

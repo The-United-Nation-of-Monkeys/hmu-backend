@@ -26,13 +26,14 @@ services:
       dockerfile: Dockerfile
     container_name: smartgrant_app
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/smartgrant
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/smartgrant
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production-min-32-chars}
       RPC_URL: ${RPC_URL:-http://localhost:8545}
       PRIVATE_KEY: ${PRIVATE_KEY:-}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-}
-      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
       AML_LARGE_AMOUNT_THRESHOLD: ${AML_LARGE_AMOUNT_THRESHOLD:-0.2}
       AML_DUPLICATE_WINDOW_MINUTES: ${AML_DUPLICATE_WINDOW_MINUTES:-5}
+      UPLOAD_DIR: /app/uploads
     ports:
       - "8000:8000"
     depends_on:
@@ -40,6 +41,7 @@ services:
         condition: service_healthy
     volumes:
       - ./app:/app/app
+      - ./uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - smartgrant_network
@@ -50,3 +52,4 @@ networks:
 
 volumes:
   postgres_data:
+

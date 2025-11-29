@@ -2,9 +2,15 @@
 Модель гранта
 """
 from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.db import Base
+from app.db.base import Base
+from app.utils.enums import GrantState
+
+
+# PostgreSQL enum для состояния гранта
+grantstate_enum = ENUM('active', 'completed', 'cancelled', name='grantstate', create_type=False)
 
 
 class Grant(Base):
@@ -13,16 +19,16 @@ class Grant(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False, index=True)
-    amount_total = Column(Numeric(18, 2), nullable=False)  # Общая сумма гранта
-    amount_spent = Column(Numeric(18, 2), default=0)  # Потраченная сумма
-    grantee_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    blockchain_address = Column(String, nullable=True, index=True)  # Адрес смарт-контракта
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    total_amount = Column(Numeric(18, 2), nullable=False)
+    amount_spent = Column(Numeric(18, 2), default=0)
+    university_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    state = Column(grantstate_enum, default='active', index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
-    grantee = relationship("User", backref="grants")
-    expenses = relationship("Expense", back_populates="grant", cascade="all, delete-orphan")
+    university = relationship("User", foreign_keys=[university_id], backref="grants")
+    spending_items = relationship("SpendingItem", back_populates="grant", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<Grant(id={self.id}, title='{self.title}', amount_total={self.amount_total})>"
+        return f"<Grant(id={self.id}, title='{self.title}', total_amount={self.total_amount})>"
 
